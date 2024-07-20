@@ -44,7 +44,6 @@ void* arena_push(Arena* arena, size_t amount) {
         assert("memory commit failed" && result);
         arena->next_page = (void*)((size_t)arena->next_page + arena->page_size);
         arena->capacity += arena->page_size;
-        printf("Committing a page.\n");
     }
 
     size_t result = arena->base + arena->used;

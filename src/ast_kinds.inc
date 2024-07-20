@@ -1,0 +1,5 @@
+X(INT_CONST, "int_const")
+X(ADD, "add")
+X(SUB, "sub")
+X(MUL, "mul")
+X(DIV, "div")

@@ -1,8 +1,25 @@
 #include <stdio.h>
-#include <stdlib.h>
 
-#include "core.h"
-#include "int128.h"
+#include "frontend.h"
+
+static int128_t eval(AST* ast) {
+    switch (ast->kind) {
+        default:
+            assert(false);
+            return int128_zero();
+
+        case AST_INT_CONST:
+            return ast->as.int_const;
+        case AST_ADD:
+            return int128_add(eval(ast->as.binary[0]), eval(ast->as.binary[1]));
+        case AST_SUB:
+            return int128_sub(eval(ast->as.binary[0]), eval(ast->as.binary[1]));
+        case AST_MUL:
+            return int128_mul(eval(ast->as.binary[0]), eval(ast->as.binary[1]));
+        case AST_DIV:
+            return int128_div(eval(ast->as.binary[0]), eval(ast->as.binary[1])).quotient;
+    }
+}
 
 int main() {
     Arena* arena = arena_new();
@@ -23,13 +40,10 @@ int main() {
     size_t source_length = fread(source, 1, file_length, file);
     source[source_length] = '\0';
 
-    printf("%s\n", source);
+    AST* ast = parse_source(arena, source, source_path);
+    int128_t result = eval(ast);
 
-    int128_t a = int128_from_uint64(23982392383);
-    int128_t b = int128_from_uint64(239833);
-    Int128DivResult d = int128_div(a, b);
-
-    printf("%lld r %lld\n", d.quotient.low, d.remainder.low);
+    printf("Result: %lld\n", result.low);
 
     return 0;
 }
