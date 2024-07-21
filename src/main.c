@@ -10,6 +10,7 @@ static int128_t eval(AST* ast) {
 
         case AST_INT_CONST:
             return ast->as.int_const;
+
         case AST_ADD:
             return int128_add(eval(ast->as.binary[0]), eval(ast->as.binary[1]));
         case AST_SUB:
@@ -18,6 +19,10 @@ static int128_t eval(AST* ast) {
             return int128_mul(eval(ast->as.binary[0]), eval(ast->as.binary[1]));
         case AST_DIV:
             return int128_div(eval(ast->as.binary[0]), eval(ast->as.binary[1])).quotient;
+
+        case AST_BLOCK:
+            assert(ast->as.block.value);
+            return eval(ast->as.block.value);
     }
 }
 

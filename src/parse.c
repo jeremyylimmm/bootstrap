@@ -75,12 +75,32 @@ static Token peek(Parser* p) {
     return p->lexer_cache;
 }
 
+static bool match(Parser* p, int kind, char* message) {
+    Token tok = peek(p);
+    
+    if (tok.kind != kind) {
+        report_error_token(p->source, p->source_path, tok, message);
+        return false;
+    }
+
+    lex(p);
+    return true;
+}
+
+#define REQUIRE(p, kind, message) do { if (!match(p, kind, message)) { return 0; } } while (false)
+
+static bool until(Parser* p, int kind) {
+    return peek(p).kind != kind && peek(p).kind != TOKEN_EOF;
+}
+
 static AST* new_ast(Parser* p, AST_Kind kind) {
     assert("illegal ast kind" && kind);
     AST* node = arena_type(p->arena, AST);
     node->kind = kind;
     return node;
 }
+
+static AST* parse_block(Parser* p);
 
 static AST* parse_primary(Parser* p) {
     Token tok = peek(p);
@@ -101,6 +121,9 @@ static AST* parse_primary(Parser* p) {
 
             return node;
         } break;
+
+        case '{':
+            return parse_block(p);
 
         default: {
             report_error_token(p->source, p->source_path, tok, "expected an expression");
@@ -158,8 +181,61 @@ static AST* parse_binary(Parser* p, int outer_prec) {
     return left;
 }
 
-static AST* parse_any(Parser* p) {
-    return parse_binary(p, 0);
+static AST* parse_expression(Parser* p);
+
+static AST* parse_block(Parser* p) {
+    REQUIRE(p, '{', "expected a {} block");
+
+    AST head = {0};
+    AST* cur = &head;
+    AST* value = 0;
+
+    while (until(p, '}')) {
+        assert(!value);
+
+        Token tok = peek(p);
+        AST* node = 0;
+
+        switch (tok.kind) {
+            default:
+                node = parse_expression(p);
+                switch(peek(p).kind) {
+                    case ';':
+                        lex(p);
+                        break;
+                    case '}':
+                        value = node;
+                        break;
+                    default:
+                        report_error_token(p->source, p->source_path, peek(p), "ill-formed expression");
+                        break;
+                    
+                }
+                break;
+        }
+
+        assert(node);
+        cur = cur->next = node;
+    }
+
+    REQUIRE(p, '}', "unexpected character");
+
+    AST* block = new_ast(p, AST_BLOCK);
+    block->as.block.head = head.next;
+    block->as.block.value = value;
+
+    return block;
+}
+
+static AST* parse_expression(Parser* p) {
+    Token tok = peek(p);
+
+    switch (tok.kind) {
+        default:
+            return parse_binary(p, 0);
+        case '{':
+            return parse_block(p);
+    }
 }
 
 AST* parse_source(Arena* arena, char* source, char* source_path) {
@@ -172,6 +248,6 @@ AST* parse_source(Arena* arena, char* source, char* source_path) {
         .lexer_line = 1
     };
 
-    AST* result = parse_any(&p);
+    AST* result = parse_block(&p);
     return result;
 }

@@ -33,11 +33,16 @@ typedef struct {
 
 typedef struct AST AST;
 struct AST {
+    AST* next;
     AST_Kind kind;
 
     union {
         int128_t int_const;
         AST* binary[2];
+        struct {
+            AST* head;
+            AST* value;
+        } block;
     } as;
 };
 
