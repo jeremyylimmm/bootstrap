@@ -209,9 +209,11 @@ static AST* parse_block(Parser* p) {
                     default:
                         report_error_token(p->source, p->source_path, peek(p), "ill-formed expression");
                         break;
-                    
                 }
                 break;
+
+            case '{':
+                return parse_block(p);
         }
 
         assert(node);

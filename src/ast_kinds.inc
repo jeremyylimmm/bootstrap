@@ -6,3 +6,6 @@ X(MUL, "mul")
 X(DIV, "div")
 
 X(BLOCK, "block")
+
+X(IF, "if")
+X(ELSE, "else")
