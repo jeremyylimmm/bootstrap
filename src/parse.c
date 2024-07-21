@@ -50,7 +50,7 @@ static Token lex(Parser* p) {
                 kind = TOKEN_INT_LITERAL;
             }
             else if (isident(*start)) {
-                while (isident(*start)) {
+                while (isident(*p->lexer_char)) {
                     ++p->lexer_char;
                 }
 
@@ -188,23 +188,26 @@ static AST* parse_block(Parser* p) {
 
     AST head = {0};
     AST* cur = &head;
-    AST* value = 0;
+    bool produces_value = false;
 
     while (until(p, '}')) {
-        assert(!value);
-
         Token tok = peek(p);
         AST* node = 0;
+
+        produces_value = false;
 
         switch (tok.kind) {
             default:
                 node = parse_expression(p);
+
+                if (!node) { return 0; }
+
                 switch(peek(p).kind) {
                     case ';':
                         lex(p);
                         break;
                     case '}':
-                        value = node;
+                        produces_value = true;
                         break;
                     default:
                         report_error_token(p->source, p->source_path, peek(p), "ill-formed expression");
@@ -213,7 +216,10 @@ static AST* parse_block(Parser* p) {
                 break;
 
             case '{':
-                return parse_block(p);
+                node = parse_block(p);
+                if (!node) { return 0; }
+                if (node->as.block.value) { produces_value = true; }
+                break;
         }
 
         assert(node);
@@ -224,7 +230,7 @@ static AST* parse_block(Parser* p) {
 
     AST* block = new_ast(p, AST_BLOCK);
     block->as.block.head = head.next;
-    block->as.block.value = value;
+    block->as.block.value = produces_value ? cur : 0;
 
     return block;
 }
