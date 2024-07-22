@@ -22,6 +22,8 @@ int main() {
     source[source_length] = '\0';
 
     HIR_Proc* ast = parse_source(arena, source, source_path);
+    if (!ast) { return 1; }
+    
     hir_print(ast, "main");
 
     return 0;

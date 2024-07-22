@@ -110,6 +110,8 @@ static HIR_Block* new_block(Parser* p) {
     return block;
 }
 
+static HIR_Node* parse_expr(Parser* p);
+
 static HIR_Node* parse_primary(Parser* p) {
     Token tok = peek(p);
 
@@ -126,6 +128,8 @@ static HIR_Node* parse_primary(Parser* p) {
             node->as.int_const = value;
             return node;
         }
+        case '{':
+            return parse_expr(p);
     }
 
     report_error_token(p->source, p->source_path, tok, "expected an expression here");
@@ -174,6 +178,84 @@ static HIR_Node* parse_binary(Parser* p, int caller_prec) {
     return left;
 }
 
+static HIR_Node* parse_natural_expr(Parser* p) {
+    return parse_binary(p, 0);
+}
+
+typedef struct {
+    HIR_Node* expr;
+    bool failure;
+} Statement;
+
+#define OK(e) ((Statement){.expr=(e)})
+#define ERR() ((Statement){.failure=true})
+
+#define REQUIRE_STMT(p, kind, msg) do { if (!match(p, kind, msg)) { return ERR(); } } while (false)
+
+static Statement parse_statement(Parser* p);
+
+static Statement parse_block(Parser* p) {
+    REQUIRE_STMT(p, '{', "expected a {} block here");
+
+    HIR_Node* block_expr = 0;
+
+    while(until(p, '}')) {
+        Token tok = peek(p);
+
+        switch (tok.kind) {
+            default: {
+                HIR_Node* expr = parse_natural_expr(p);
+                if (!expr) { return ERR(); }
+
+                switch (peek(p).kind) {
+                    case ';':
+                        lex(p);
+                        break;
+                    case '}':
+                        block_expr = expr;
+                        break;
+                    default:
+                        report_error_token(p->source, p->source_path, peek(p), "ill-formed expression");
+                        return ERR();
+                }
+            } break;
+
+            case '{': {
+                Statement stmt = parse_block(p);
+                if(stmt.failure) { return ERR(); }
+                if (stmt.expr && peek(p).kind == '}') {
+                    block_expr = stmt.expr;
+                }
+            } break;
+        }
+    }
+
+    REQUIRE_STMT(p, '}', "missing a closing } here");
+
+    return OK(block_expr);
+}
+
+static HIR_Node* parse_expr(Parser* p) {
+    Token tok = peek(p);
+
+    switch (tok.kind) {
+        default:
+            return parse_natural_expr(p);
+        case '{': {
+            Statement stmt = parse_block(p);
+            if (stmt.failure) { return 0; }
+            if (!stmt.expr) {
+                report_error_token(p->source, p->source_path, tok, "block does not produce a value");
+                return 0;
+            }
+            return stmt.expr;
+        } break;
+    }
+}
+
+#undef OK
+#undef ERR
+
 HIR_Proc* parse_source(Arena* arena, char* source, char* source_path) {
     Parser p = {
         .arena = arena,
@@ -186,8 +268,8 @@ HIR_Proc* parse_source(Arena* arena, char* source, char* source_path) {
 
     HIR_Block* control_flow_head = new_block(&p);
 
-    HIR_Node* result = parse_binary(&p, 0);
-    if (!result) { return 0; }
+    Statement stmt = parse_block(&p);
+    if (stmt.failure) { return 0; }
 
     HIR_Proc* proc = arena_type(arena, HIR_Proc);
     proc->control_flow_head = control_flow_head;
