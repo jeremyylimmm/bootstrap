@@ -2,30 +2,6 @@
 
 #include "frontend.h"
 
-static int128_t eval(AST* ast) {
-    switch (ast->kind) {
-        default:
-            assert(false);
-            return int128_zero();
-
-        case AST_INT_CONST:
-            return ast->as.int_const;
-
-        case AST_ADD:
-            return int128_add(eval(ast->as.binary[0]), eval(ast->as.binary[1]));
-        case AST_SUB:
-            return int128_sub(eval(ast->as.binary[0]), eval(ast->as.binary[1]));
-        case AST_MUL:
-            return int128_mul(eval(ast->as.binary[0]), eval(ast->as.binary[1]));
-        case AST_DIV:
-            return int128_div(eval(ast->as.binary[0]), eval(ast->as.binary[1])).quotient;
-
-        case AST_BLOCK:
-            assert(ast->as.block.value);
-            return eval(ast->as.block.value);
-    }
-}
-
 int main() {
     Arena* arena = arena_new();
 
@@ -45,10 +21,8 @@ int main() {
     size_t source_length = fread(source, 1, file_length, file);
     source[source_length] = '\0';
 
-    AST* ast = parse_source(arena, source, source_path);
-    int128_t result = eval(ast);
-
-    printf("Result: %lld\n", result.low);
+    HIR_Proc* ast = parse_source(arena, source, source_path);
+    hir_print(ast, "main");
 
     return 0;
 }

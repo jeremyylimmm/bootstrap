@@ -11,6 +11,8 @@ typedef struct {
     char* lexer_char;
     int lexer_line;
     Token lexer_cache;
+
+    HIR_Block* cur_block;
 } Parser;
 
 static bool isident(char c) {
@@ -93,49 +95,46 @@ static bool until(Parser* p, int kind) {
     return peek(p).kind != kind && peek(p).kind != TOKEN_EOF;
 }
 
-static AST* new_ast(Parser* p, AST_Kind kind) {
-    assert("illegal ast kind" && kind);
-    AST* node = arena_type(p->arena, AST);
-    node->kind = kind;
+static HIR_Node* new_node(Parser* p, HIR_Op op) {
+    assert(op);
+    HIR_Node* node = arena_type(p->arena, HIR_Node);
+    node->op = op;
+    hir_append(p->cur_block, node);
     return node;
 }
 
-static AST* parse_block(Parser* p);
+static HIR_Block* new_block(Parser* p) {
+    HIR_Block* block = arena_type(p->arena, HIR_Block);
+    if (p->cur_block) { p->cur_block->next = block; }
+    p->cur_block = block;
+    return block;
+}
 
-static AST* parse_primary(Parser* p) {
+static HIR_Node* parse_primary(Parser* p) {
     Token tok = peek(p);
 
     switch (tok.kind) {
         case TOKEN_INT_LITERAL: {
             lex(p);
-
             int128_t value = int128_zero();
-
             for (int i = 0; i < tok.length; ++i) {
-                value = int128_mul(value, int128_from_int64(10));
-                value = int128_add(value, int128_from_int64(tok.start[i] - '0'));
+                int digit = tok.start[i] - '0';
+                value = int128_mul(value, int128_from_uint64(10));
+                value = int128_add(value, int128_from_uint64(digit));
             }
-
-            AST* node = new_ast(p, AST_INT_CONST);
+            HIR_Node* node = new_node(p, HIR_OP_INT_CONST);
             node->as.int_const = value;
-
             return node;
-        } break;
-
-        case '{':
-            return parse_block(p);
-
-        default: {
-            report_error_token(p->source, p->source_path, tok, "expected an expression");
-            return 0;
         }
     }
+
+    report_error_token(p->source, p->source_path, tok, "expected an expression here");
+    return 0;
 }
 
 static int binary_prec(Token op) {
     switch (op.kind) {
-        default:
-            return 0;
+        default: return 0;
         case '*':
         case '/':
             return 20;
@@ -145,33 +144,27 @@ static int binary_prec(Token op) {
     }
 }
 
-static AST* parse_binary(Parser* p, int outer_prec) {
-    AST* left = parse_primary(p);
+static HIR_Op binary_op(Token op) {
+    switch (op.kind) {
+        default: return HIR_OP_ILLEGAL;
+        case '*': return HIR_OP_MUL;
+        case '/': return HIR_OP_DIV;
+        case '+': return HIR_OP_ADD;
+        case '-': return HIR_OP_SUB;
+    }
+}
+
+static HIR_Node* parse_binary(Parser* p, int caller_prec) {
+    HIR_Node* left = parse_primary(p);
     if (!left) { return 0; }
 
-    while (binary_prec(peek(p)) > outer_prec) {
+    while (binary_prec(peek(p)) > caller_prec) {
         Token op = lex(p);
 
-        AST* right = parse_binary(p, binary_prec(op));
+        HIR_Node* right = parse_binary(p, binary_prec(op));
         if (!right) { return 0; }
 
-        AST_Kind kind = AST_ILLEGAL;
-        switch (op.kind) {
-            case '*':
-                kind = AST_MUL;
-                break;
-            case '/':
-                kind = AST_DIV;
-                break;
-            case '+':
-                kind = AST_ADD;
-                break;
-            case '-':
-                kind = AST_SUB;
-                break;
-        }
-
-        AST* bin = new_ast(p, kind);
+        HIR_Node* bin = new_node(p, binary_op(op));
         bin->as.binary[0] = left;
         bin->as.binary[1] = right;
 
@@ -181,72 +174,7 @@ static AST* parse_binary(Parser* p, int outer_prec) {
     return left;
 }
 
-static AST* parse_expression(Parser* p);
-
-static AST* parse_block(Parser* p) {
-    REQUIRE(p, '{', "expected a {} block");
-
-    AST head = {0};
-    AST* cur = &head;
-    bool produces_value = false;
-
-    while (until(p, '}')) {
-        Token tok = peek(p);
-        AST* node = 0;
-
-        produces_value = false;
-
-        switch (tok.kind) {
-            default:
-                node = parse_expression(p);
-
-                if (!node) { return 0; }
-
-                switch(peek(p).kind) {
-                    case ';':
-                        lex(p);
-                        break;
-                    case '}':
-                        produces_value = true;
-                        break;
-                    default:
-                        report_error_token(p->source, p->source_path, peek(p), "ill-formed expression");
-                        break;
-                }
-                break;
-
-            case '{':
-                node = parse_block(p);
-                if (!node) { return 0; }
-                if (node->as.block.value) { produces_value = true; }
-                break;
-        }
-
-        assert(node);
-        cur = cur->next = node;
-    }
-
-    REQUIRE(p, '}', "unexpected character");
-
-    AST* block = new_ast(p, AST_BLOCK);
-    block->as.block.head = head.next;
-    block->as.block.value = produces_value ? cur : 0;
-
-    return block;
-}
-
-static AST* parse_expression(Parser* p) {
-    Token tok = peek(p);
-
-    switch (tok.kind) {
-        default:
-            return parse_binary(p, 0);
-        case '{':
-            return parse_block(p);
-    }
-}
-
-AST* parse_source(Arena* arena, char* source, char* source_path) {
+HIR_Proc* parse_source(Arena* arena, char* source, char* source_path) {
     Parser p = {
         .arena = arena,
         .source = source,
@@ -256,6 +184,13 @@ AST* parse_source(Arena* arena, char* source, char* source_path) {
         .lexer_line = 1
     };
 
-    AST* result = parse_block(&p);
-    return result;
+    HIR_Block* control_flow_head = new_block(&p);
+
+    HIR_Node* result = parse_binary(&p, 0);
+    if (!result) { return 0; }
+
+    HIR_Proc* proc = arena_type(arena, HIR_Proc);
+    proc->control_flow_head = control_flow_head;
+
+    return proc;
 }
