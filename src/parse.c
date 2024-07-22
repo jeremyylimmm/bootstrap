@@ -1,5 +1,6 @@
 #include <ctype.h>
 #include <stdio.h>
+#include <string.h>
 
 #include "frontend.h"
 
@@ -17,6 +18,30 @@ typedef struct {
 
 static bool isident(char c) {
     return isalpha(c) || c == '_';
+}
+
+static int check_keyword(char* start, char* cur, char* string, int kind) {
+    size_t length = cur-start;
+
+    if (length == strlen(string) && memcmp(start, string, length) == 0) {
+        return kind;
+    }
+    else {
+        return TOKEN_IDENT;
+    }
+}
+
+static int ident_kind(char* start, char* cur) {
+    switch (start[0]) {
+        case 'i':
+            return check_keyword(start, cur, "if", TOKEN_KW_IF);
+        case 'e':
+            return check_keyword(start, cur, "else", TOKEN_KW_ELSE);
+        case 'w':
+            return check_keyword(start, cur, "while", TOKEN_KW_WHILE);
+    }
+
+    return TOKEN_IDENT;
 }
 
 static Token lex(Parser* p) {
@@ -56,7 +81,7 @@ static Token lex(Parser* p) {
                     ++p->lexer_char;
                 }
 
-                kind = TOKEN_IDENT;
+                kind = ident_kind(start, p->lexer_char);
             }
             break;
     }
@@ -192,7 +217,8 @@ typedef struct {
 
 #define REQUIRE_STMT(p, kind, msg) do { if (!match(p, kind, msg)) { return ERR(); } } while (false)
 
-static Statement parse_statement(Parser* p);
+static Statement parse_if(Parser* p);
+static Statement parse_while(Parser* p);
 
 static Statement parse_block(Parser* p) {
     REQUIRE_STMT(p, '{', "expected a {} block here");
@@ -227,12 +253,103 @@ static Statement parse_block(Parser* p) {
                     block_expr = stmt.expr;
                 }
             } break;
+
+            case TOKEN_KW_IF: {
+                Statement stmt = parse_if(p);
+                if (stmt.failure) { return ERR(); }
+            } break;
+
+            case TOKEN_KW_WHILE: {
+                Statement stmt = parse_while(p);
+                if (stmt.failure) { return ERR(); }
+            } break;
         }
     }
 
     REQUIRE_STMT(p, '}', "missing a closing } here");
 
     return OK(block_expr);
+}
+
+static Statement parse_if(Parser* p) {
+    REQUIRE_STMT(p, TOKEN_KW_IF, "expecting an if statement here");
+
+    // Parse the predicate
+    HIR_Node* predicate = parse_expr(p);
+    if (!predicate) { return ERR(); }
+    // Insert branch
+    HIR_Node* branch = new_node(p, HIR_OP_BRANCH);
+
+    Statement stmt;
+
+    // Parse then body
+    HIR_Block* loc_then = new_block(p);
+    stmt = parse_block(p);
+    if (stmt.failure) { return ERR(); }
+    // Insert jump to end
+    HIR_Node* jump_then = new_node(p, HIR_OP_JUMP);
+
+    // New block
+    HIR_Block* loc_else = new_block(p);
+    HIR_Block* loc_end = loc_else;
+
+    if (peek(p).kind == TOKEN_KW_ELSE) {
+        lex(p);
+
+        stmt = parse_block(p);
+        if (stmt.failure) { return ERR(); }
+
+        // Insert jump to end
+        HIR_Node* jump_else = new_node(p, HIR_OP_JUMP);
+        loc_end = new_block(p);
+
+        jump_else->as.jump.loc = loc_end;
+    }
+
+    // Specify jump locations
+
+    branch->as.branch.predicate = predicate;
+    branch->as.branch.loc_then = loc_then;
+    branch->as.branch.loc_else = loc_else;
+
+    jump_then->as.jump.loc = loc_end;
+
+    return OK(0);
+}
+
+static Statement parse_while(Parser* p) {
+    REQUIRE_STMT(p, TOKEN_KW_WHILE, "expecting a while loop here");
+
+    // Insert jump to start
+    HIR_Node* init_jump = new_node(p, HIR_OP_JUMP);
+    HIR_Block* start = new_block(p);
+
+    // Parse predicate
+    HIR_Node* predicate = parse_expr(p);
+    if (!predicate) { return ERR(); }
+    // Insert branch
+    HIR_Node* branch = new_node(p, HIR_OP_BRANCH);
+
+    // Parse loop body
+    HIR_Block* loc_then = new_block(p);
+    Statement stmt = parse_block(p);
+    if (stmt.failure) { return ERR(); }
+    // Insert jump to top
+    HIR_Node* loop_jump = new_node(p, HIR_OP_JUMP);
+
+    HIR_Block* end = new_block(p);
+
+    // Specify jump locations
+
+    init_jump->as.jump.loc = start;
+
+    branch->as.branch.predicate = predicate;
+    branch->as.branch.loc_then = loc_then;
+    branch->as.branch.loc_else = end;
+
+    loop_jump->as.jump.loc = start;
+
+    return OK(0);
 }
 
 static HIR_Node* parse_expr(Parser* p) {

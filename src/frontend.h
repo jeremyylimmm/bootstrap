@@ -5,18 +5,27 @@
 
 typedef enum {
     HIR_OP_ILLEGAL,
+
     HIR_OP_INT_CONST,
+
     HIR_OP_ADD,
     HIR_OP_SUB,
     HIR_OP_MUL,
     HIR_OP_DIV,
+
+    HIR_OP_JUMP,
+    HIR_OP_BRANCH,
+
     NUM_HIR_OPS,
 } HIR_Op;
 
 enum {
     TOKEN_EOF = 0,
     TOKEN_IDENT = 256,
-    TOKEN_INT_LITERAL
+    TOKEN_INT_LITERAL,
+    TOKEN_KW_IF,
+    TOKEN_KW_ELSE,
+    TOKEN_KW_WHILE,
 };
 
 typedef struct {
@@ -38,6 +47,12 @@ struct HIR_Node {
     union {
         int128_t int_const;
         HIR_Node* binary[2];
+        struct { HIR_Block* loc; } jump;
+        struct {
+            HIR_Node* predicate;
+            HIR_Block* loc_then;
+            HIR_Block* loc_else;
+        } branch;
     } as;
 
     int tid;
