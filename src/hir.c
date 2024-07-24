@@ -44,9 +44,9 @@ void hir_print(HIR_Proc* proc, char* name) {
         printf("bb_%d:\n", block->tid);
 
         for (HIR_Node* n = block->start; n; n = n->next) {
-            printf("  %%%-4d =  ", n->tid);
+            printf("  %%%-3d = ", n->tid);
 
-            static_assert(NUM_HIR_OPS == 8, "handle print ops");
+            static_assert(NUM_HIR_OPS == 9, "handle print ops");
             switch (n->op) {
                 default:
                     assert(false);
@@ -72,6 +72,11 @@ void hir_print(HIR_Proc* proc, char* name) {
                 case HIR_OP_BRANCH:
                     printf("branch %%%d [bb_%d, bb_%d]", n->as.branch.predicate->tid, n->as.branch.loc_then->tid, n->as.branch.loc_else->tid);
                     break;
+                case HIR_OP_RET:
+                    printf("ret");
+                    if (n->as.ret.value) {
+                        printf(" %%%d", n->as.ret.value->tid);
+                    }
             }
 
             printf("\n");

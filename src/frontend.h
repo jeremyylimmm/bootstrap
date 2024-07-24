@@ -16,6 +16,8 @@ typedef enum {
     HIR_OP_JUMP,
     HIR_OP_BRANCH,
 
+    HIR_OP_RET,
+
     NUM_HIR_OPS,
 } HIR_Op;
 
@@ -26,6 +28,7 @@ enum {
     TOKEN_KW_IF,
     TOKEN_KW_ELSE,
     TOKEN_KW_WHILE,
+    TOKEN_KW_RETURN,
 };
 
 typedef struct {
@@ -53,6 +56,9 @@ struct HIR_Node {
             HIR_Block* loc_then;
             HIR_Block* loc_else;
         } branch;
+        struct {
+            HIR_Node* value;
+        } ret;
     } as;
 
     int tid;

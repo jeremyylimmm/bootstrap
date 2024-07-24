@@ -39,6 +39,8 @@ static int ident_kind(char* start, char* cur) {
             return check_keyword(start, cur, "else", TOKEN_KW_ELSE);
         case 'w':
             return check_keyword(start, cur, "while", TOKEN_KW_WHILE);
+        case 'r':
+            return check_keyword(start, cur, "return", TOKEN_KW_RETURN);
     }
 
     return TOKEN_IDENT;
@@ -219,6 +221,7 @@ typedef struct {
 
 static Statement parse_if(Parser* p);
 static Statement parse_while(Parser* p);
+static Statement parse_return(Parser* p);
 
 static Statement parse_block(Parser* p) {
     REQUIRE_STMT(p, '{', "expected a {} block here");
@@ -261,6 +264,11 @@ static Statement parse_block(Parser* p) {
 
             case TOKEN_KW_WHILE: {
                 Statement stmt = parse_while(p);
+                if (stmt.failure) { return ERR(); }
+            } break;
+
+            case TOKEN_KW_RETURN: {
+                Statement stmt = parse_return(p);
                 if (stmt.failure) { return ERR(); }
             } break;
         }
@@ -352,6 +360,26 @@ static Statement parse_while(Parser* p) {
     return OK(0);
 }
 
+static Statement parse_return(Parser* p) {
+    REQUIRE_STMT(p, TOKEN_KW_RETURN, "expected a return statement here");
+
+    HIR_Node* value = 0;
+
+    if (peek(p).kind != ';') {
+        value = parse_expr(p);
+        if (!value) { return ERR(); }
+    }
+
+    REQUIRE_STMT(p, ';', "ill-formed return statement");
+
+    HIR_Node* ret = new_node(p, HIR_OP_RET);
+    ret->as.ret.value = value;
+
+    new_block(p);
+
+    return OK(0);
+}
+
 static HIR_Node* parse_expr(Parser* p) {
     Token tok = peek(p);
 
@@ -387,6 +415,11 @@ HIR_Proc* parse_source(Arena* arena, char* source, char* source_path) {
 
     Statement stmt = parse_block(&p);
     if (stmt.failure) { return 0; }
+
+    if (stmt.expr) {
+        HIR_Node* ret = new_node(&p, HIR_OP_RET);
+        ret->as.ret.value = stmt.expr;
+    }
 
     HIR_Proc* proc = arena_type(arena, HIR_Proc);
     proc->control_flow_head = control_flow_head;
