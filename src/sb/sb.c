@@ -1,5 +1,6 @@
 #include "core.h"
 #include "sb.h"
+#include "containers.h"
 
 #define VIEW_DATA(n, type) (*(type*)((n)->data))
 
@@ -155,7 +156,83 @@ void sb_provide_phi_inputs(SB_Context* ctx, SB_Node* phi, SB_Node* region, int n
     }
 }
 
+typedef struct {
+    Vec vec;
+} NodeStack;
+
+static NodeStack node_stack_new() {
+    return (NodeStack) {
+        .vec = vec_new(sizeof(SB_Node*))
+    };
+}
+
+static void node_stack_destroy(NodeStack* stack) {
+    vec_destroy(&stack->vec);
+}
+
+static void node_stack_push(NodeStack* stack, SB_Node* node) {
+    vec_push(&stack->vec, &node);
+}
+
+static SB_Node* node_stack_pop(NodeStack* stack) {
+    SB_Node* node = *(SB_Node**)vec_pop(&stack->vec);
+    return node;
+}
+
+static bool node_stack_empty(NodeStack* stack) {
+    return stack->vec.length == 0;
+}
+
+typedef struct {
+    HashSet set;
+} NodeSet;
+
+static NodeSet node_set_new() {
+    return (NodeSet) {
+        .set = hash_set_new(sizeof(SB_Node*), pointer_hash, pointer_cmp)
+    };
+}
+
+static void node_set_destroy(NodeSet* set) {
+    hash_set_destroy(&set->set);
+}
+
+static void node_set_add(NodeSet* set, SB_Node* node) {
+    hash_set_insert(&set->set, &node);
+}
+
+static bool node_set_contains(NodeSet* set, SB_Node* node) {
+    return hash_set_contains(&set->set, &node);
+}
+
+static void node_set_remove(NodeSet* set, SB_Node* node) {
+    hash_set_remove(&set->set, &node);
+}
+
 SB_Proc* sb_proc(SB_Context* ctx, SB_Node* start, SB_Node* end) {
+    NodeStack stack = node_stack_new();
+    node_stack_push(&stack, end);
+
+    NodeSet useful = node_set_new();
+
+    while (!node_stack_empty(&stack)) {
+        SB_Node* node = node_stack_pop(&stack);
+
+        if (node_set_contains(&useful, node)) { continue; }
+        node_set_add(&useful, node);
+
+        for (int i = 0; i < node->num_ins; ++i) {
+            if (node->ins[i]) {
+                node_stack_push(&stack, node->ins[i]);
+            }
+        }
+    }
+
+    node_stack_destroy(&stack);
+    node_set_destroy(&useful);
+
+    assert("the procedure never reaches the end node" && node_set_contains(&useful, start));
+
     SB_Proc* proc = arena_type(ctx->arena, SB_Proc);
     proc->start = start;
     proc->end = end;

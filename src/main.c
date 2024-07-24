@@ -1,10 +1,10 @@
 #include <stdio.h>
 
 #include "frontend.h"
+#include "containers.h"
 
 int main() {
     Arena* arena = arena_new();
-
     char* source_path = "examples/test.bs";
 
     FILE* file;
