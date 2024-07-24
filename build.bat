@@ -1,6 +1,6 @@
 @echo off
 
-call :build bootstrap "src/*.c"
+call :build bootstrap "src/*.c src/sb/*.c"
 
 exit /b %errorlevel%
 
@@ -9,7 +9,7 @@ exit /b %errorlevel%
 if not exist build\\ mkdir build\\
 
 set options=/nologo /WX /W4
-set options=%options% /Fobuild/
+set options=%options% /Fobuild/ /Isrc/
 
 set debug_opts=/ZI /Fdbuild/
 set debug_opts=%debug_opts% /D_DEBUG

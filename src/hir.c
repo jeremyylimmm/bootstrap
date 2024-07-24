@@ -83,3 +83,7 @@ void hir_print(HIR_Proc* proc, char* name) {
         }
     }
 }
+
+SB_Proc* hir_lower(SB_Context* ctx, HIR_Proc* hir_proc) {
+    
+}

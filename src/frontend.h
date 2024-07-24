@@ -2,6 +2,7 @@
 
 #include "int128.h"
 #include "core.h"
+#include "sb/sb.h"
 
 typedef enum {
     HIR_OP_ILLEGAL,
@@ -81,3 +82,5 @@ void report_error_token(char* source, char* source_path, Token token, char* fmt,
 
 void hir_append(HIR_Block* block, HIR_Node* node);
 void hir_print(HIR_Proc* proc, char* name);
+
+SB_Proc* hir_lower(SB_Context* ctx, HIR_Proc* hir_proc);

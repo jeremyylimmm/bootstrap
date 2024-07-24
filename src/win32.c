@@ -32,6 +32,11 @@ Arena* arena_new() {
     return arena;
 }
 
+void arena_destroy(Arena* arena) {
+    VirtualFree((void*)arena->base, 0, MEM_RELEASE);
+    LocalFree(arena);
+}
+
 void* arena_push(Arena* arena, size_t amount) {
     if (!amount) {
         return 0;

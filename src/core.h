@@ -9,6 +9,7 @@
 
 typedef struct Arena Arena;
 Arena* arena_new();
+void arena_destroy(Arena* arena);
 
 void* arena_push(Arena* arena, size_t amount);
 void* arena_zero(Arena* arena, size_t amount);
