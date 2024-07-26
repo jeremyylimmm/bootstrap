@@ -1,30 +1,8 @@
-#include "core.h"
-#include "sb.h"
+#include <stdio.h>
+#include <string.h>
+
+#include "internal.h"
 #include "containers.h"
-
-#define VIEW_DATA(n, type) (*(type*)((n)->data))
-
-struct SB_Context {
-    Arena* arena;
-};
-
-enum {
-    BINARY_LEFT,
-    BINARY_RIGHT,
-    NUM_BINARY_INS
-};
-
-enum {
-    END_CTRL,
-    END_MEM,
-    END_RET_VAL,
-    NUM_END_INS
-};
-
-enum {
-    PROJ_INPUT,
-    NUM_PROJ_INS
-};
 
 SB_Context* sb_init() {
     Arena* arena = arena_new();
@@ -43,9 +21,10 @@ static void alloc_inputs(SB_Context* ctx, SB_Node* node, int num_ins) {
     node->ins = arena_array(ctx->arena, SB_Node*, num_ins);
 }
 
-static SB_Node* new_node(SB_Context* ctx, SB_Op op, int num_ins) {
+static SB_Node* new_node(SB_Context* ctx, SB_Op op, int num_ins, SB_NodeFlags flags) {
     SB_Node* node = arena_type(ctx->arena, SB_Node);
     node->op = op;
+    node->flags = flags;
     alloc_inputs(ctx, node, num_ins);
     return node;
 }
@@ -57,7 +36,7 @@ static void alloc_data_raw(SB_Context* ctx, SB_Node* node, int size) {
 
 static void set_input(SB_Context* ctx, SB_Node* node, int index, SB_Node* input) {
     assert(index < node->num_ins && !node->ins[index]);
-    node->ins[index] = node;
+    node->ins[index] = input;
 
     SB_User* u = arena_type(ctx->arena, SB_User);
     u->index = index;
@@ -70,15 +49,19 @@ static void set_input(SB_Context* ctx, SB_Node* node, int index, SB_Node* input)
 #define ALLOC_DATA(ctx, node, type) alloc_data_raw(ctx, node, sizeof(type))
 #define SET_INPUT(node, index, input) set_input(ctx, node, index, input)
 
+SB_Node* sb_node_null(SB_Context* ctx) {
+    return new_node(ctx, SB_OP_NULL, 0, SB_NODE_FLAG_NONE);
+}
+
 SB_Node* sb_node_int_const(SB_Context* ctx, uint64_t value) {
-    SB_Node* n = new_node(ctx, SB_OP_INT_CONST, 0);    
+    SB_Node* n = new_node(ctx, SB_OP_INT_CONST, 0, SB_NODE_FLAG_NONE);    
     ALLOC_DATA(ctx, n, uint64_t);
     VIEW_DATA(n, uint64_t) = value;
     return n;
 }
 
 SB_Node* new_binary(SB_Context* ctx, SB_Op op, SB_Node* left, SB_Node* right) {
-    SB_Node* n = new_node(ctx, op, NUM_BINARY_INS);
+    SB_Node* n = new_node(ctx, op, NUM_BINARY_INS, SB_NODE_FLAG_NONE);
     SET_INPUT(n, BINARY_LEFT, left);
     SET_INPUT(n, BINARY_RIGHT, right);
     return n;
@@ -101,11 +84,11 @@ SB_Node* sb_node_sdiv(SB_Context* ctx, SB_Node* left, SB_Node* right) {
 }
 
 SB_Node* sb_node_start(SB_Context* ctx) {
-    return new_node(ctx, SB_OP_START, 0);
+    return new_node(ctx, SB_OP_START, 0, SB_NODE_FLAG_NONE);
 }
 
 SB_Node* sb_node_end(SB_Context* ctx, SB_Node* ctrl, SB_Node* mem, SB_Node* ret_val) {
-    SB_Node* node = new_node(ctx, SB_OP_END, NUM_END_INS);
+    SB_Node* node = new_node(ctx, SB_OP_END, NUM_END_INS, SB_NODE_FLAG_NONE);
     SET_INPUT(node, END_CTRL, ctrl);
     SET_INPUT(node, END_MEM, mem);
     SET_INPUT(node, END_RET_VAL, ret_val);
@@ -113,7 +96,7 @@ SB_Node* sb_node_end(SB_Context* ctx, SB_Node* ctrl, SB_Node* mem, SB_Node* ret_
 }
 
 static SB_Node* new_proj(SB_Context* ctx, SB_Op op, SB_Node* input) {
-    SB_Node* node = new_node(ctx, op, NUM_PROJ_INS);
+    SB_Node* node = new_node(ctx, op, NUM_PROJ_INS, SB_NODE_FLAG_PROJECTION);
     SET_INPUT(node, PROJ_INPUT, input);
     return node;
 }
@@ -129,11 +112,11 @@ SB_Node* sb_node_start_ctrl(SB_Context* ctx, SB_Node* start) {
 }
 
 SB_Node* sb_node_region(SB_Context* ctx) {
-    return new_node(ctx, SB_OP_REGION, 0);
+    return new_node(ctx, SB_OP_REGION, 0, SB_NODE_FLAG_NONE);
 }
 
 SB_Node* sb_node_phi(SB_Context* ctx) {
-    return new_node(ctx, SB_OP_PHI, 0);
+    return new_node(ctx, SB_OP_PHI, 0, SB_NODE_FLAG_NONE);
 }
 
 void sb_provide_region_inputs(SB_Context* ctx, SB_Node* region, int num_ins, SB_Node** ins) {
@@ -147,6 +130,7 @@ void sb_provide_region_inputs(SB_Context* ctx, SB_Node* region, int num_ins, SB_
 
 void sb_provide_phi_inputs(SB_Context* ctx, SB_Node* phi, SB_Node* region, int num_ins, SB_Node** ins) {
     assert(phi->op == SB_OP_PHI && region->op == SB_OP_REGION);
+    assert(num_ins == region->num_ins);
 
     alloc_inputs(ctx, phi, num_ins + 1);
     SET_INPUT(phi, 0, region);
@@ -156,85 +140,153 @@ void sb_provide_phi_inputs(SB_Context* ctx, SB_Node* phi, SB_Node* region, int n
     }
 }
 
-typedef struct {
-    Vec vec;
-} NodeStack;
-
-static NodeStack node_stack_new() {
-    return (NodeStack) {
-        .vec = vec_new(sizeof(SB_Node*))
-    };
-}
-
-static void node_stack_destroy(NodeStack* stack) {
-    vec_destroy(&stack->vec);
-}
-
-static void node_stack_push(NodeStack* stack, SB_Node* node) {
-    vec_push(&stack->vec, &node);
-}
-
-static SB_Node* node_stack_pop(NodeStack* stack) {
-    SB_Node* node = *(SB_Node**)vec_pop(&stack->vec);
+SB_Node* sb_node_branch(SB_Context* ctx, SB_Node* ctrl, SB_Node* predicate) {
+    SB_Node* node = new_node(ctx, SB_OP_BRANCH, NUM_BRANCH_INS, SB_NODE_FLAG_NONE);
+    SET_INPUT(node, BRANCH_CTRL, ctrl);
+    SET_INPUT(node, BRANCH_PREDICATE, predicate);
     return node;
 }
 
-static bool node_stack_empty(NodeStack* stack) {
-    return stack->vec.length == 0;
+SB_Node* sb_node_branch_then(SB_Context* ctx, SB_Node* branch) {
+    assert(branch->op == SB_OP_BRANCH);
+    return new_proj(ctx, SB_OP_BRANCH_THEN, branch);
+}
+
+SB_Node* sb_node_branch_else(SB_Context* ctx, SB_Node* branch) {
+    assert(branch->op == SB_OP_BRANCH);
+    return new_proj(ctx, SB_OP_BRANCH_ELSE, branch);
+}
+
+SB_Node* sb_node_load(SB_Context* ctx, SB_Node* ctrl, SB_Node* mem, SB_Node* addr) {
+    SB_Node* node = new_node(ctx, SB_OP_LOAD, NUM_LOAD_INS, SB_NODE_FLAG_NONE); 
+    SET_INPUT(node, LOAD_CTRL, ctrl);
+    SET_INPUT(node, LOAD_MEM, mem);
+    SET_INPUT(node, LOAD_ADDR, addr);
+    return node;
+}
+
+SB_Node* sb_node_store(SB_Context* ctx, SB_Node* ctrl, SB_Node* mem, SB_Node* addr, SB_Node* value) {
+    SB_Node* node = new_node(ctx, SB_OP_STORE, NUM_STORE_INS, SB_NODE_FLAG_NONE); 
+    SET_INPUT(node, STORE_CTRL, ctrl);
+    SET_INPUT(node, STORE_MEM, mem);
+    SET_INPUT(node, STORE_ADDR, addr);
+    SET_INPUT(node, STORE_VALUE, value);
+    return node;
 }
 
 typedef struct {
-    HashSet set;
-} NodeSet;
+    NodeSet* useful;
+} TrimUselessContext;
 
-static NodeSet node_set_new() {
-    return (NodeSet) {
-        .set = hash_set_new(sizeof(SB_Node*), pointer_hash, pointer_cmp)
-    };
-}
-
-static void node_set_destroy(NodeSet* set) {
-    hash_set_destroy(&set->set);
-}
-
-static void node_set_add(NodeSet* set, SB_Node* node) {
-    hash_set_insert(&set->set, &node);
-}
-
-static bool node_set_contains(NodeSet* set, SB_Node* node) {
-    return hash_set_contains(&set->set, &node);
-}
-
-static void node_set_remove(NodeSet* set, SB_Node* node) {
-    hash_set_remove(&set->set, &node);
+static void trim_useless(SB_Node* node, void* _ctx) {
+    TrimUselessContext* ctx = _ctx;
+    
+    for (SB_User** u = &node->users; *u;) {
+        if (node_set_contains(ctx->useful, (*u)->node)) {
+            u = &(*u)->next;
+        }
+        else {
+            printf("Trimmin'\n");
+            *u = (*u)->next;
+        }
+    }
 }
 
 SB_Proc* sb_proc(SB_Context* ctx, SB_Node* start, SB_Node* end) {
-    NodeStack stack = node_stack_new();
-    node_stack_push(&stack, end);
-
-    NodeSet useful = node_set_new();
-
-    while (!node_stack_empty(&stack)) {
-        SB_Node* node = node_stack_pop(&stack);
-
-        if (node_set_contains(&useful, node)) { continue; }
-        node_set_add(&useful, node);
-
-        for (int i = 0; i < node->num_ins; ++i) {
-            if (node->ins[i]) {
-                node_stack_push(&stack, node->ins[i]);
-            }
-        }
-    }
-
-    node_stack_destroy(&stack);
-    node_set_destroy(&useful);
+    NodeSet useful = {0};
+    walk_graph(end, &useful, 0, 0);
 
     assert("the procedure never reaches the end node" && node_set_contains(&useful, start));
+
+    TrimUselessContext trim_useless_ctx = {
+        .useful = &useful
+    };
+
+    walk_graph(end, 0, trim_useless, &trim_useless_ctx);
+
+    node_set_destroy(&useful);
 
     SB_Proc* proc = arena_type(ctx->arena, SB_Proc);
     proc->start = start;
     proc->end = end;
     return proc;
+}
+
+static char* proj_name(SB_Op op) {
+    const char* mnemonic = sb_op_mnemonic[op];
+    char* start = strrchr(mnemonic, '.');
+    assert(start);
+    return start + 1;
+}
+
+static void graphviz_node(NodeSet* visited, SB_Node* node, char* out, size_t out_sz) {
+    if (node->flags & SB_NODE_FLAG_PROJECTION) {
+        char temp[512];
+        graphviz_node(visited, node->ins[PROJ_INPUT], temp, sizeof(temp));
+        sprintf_s(out, out_sz, "%s:p_%s", temp, proj_name(node->op));
+        return;
+    }
+
+    sprintf_s(out, out_sz, "n%p", node);
+
+    if (node_set_contains(visited, node)) { return; }
+    node_set_add(visited, node);
+
+    printf("  %s [shape=\"record\",label=\"{", out);
+
+    if (node->num_ins) {
+        printf("{");
+
+        for (int i = 0; i < node->num_ins; ++i) {
+            if (i > 0) { printf("|"); }
+            printf("<i%d>%d", i, i);
+        }
+
+        printf("}|");
+    }
+    
+    printf("{%s}", sb_op_mnemonic[node->op]);
+
+    bool has_projections = false;
+    for (SB_User* u = node->users; u; u = u->next) {
+        if (u->node->flags & SB_NODE_FLAG_PROJECTION) {
+            has_projections = true;
+            break;
+        }
+    }
+
+    if (has_projections) {
+        printf("|{");
+        int count = 0;
+        for (SB_User* u = node->users; u; u = u->next) {
+            if (count++ > 0) {
+                printf("|");
+            }
+            char* n = proj_name(u->node->op);
+            printf("<p_%s>%s", n, n);
+        }
+        printf("}");
+    }
+
+    printf("}\"];\n");
+
+    for (int i = 0; i < node->num_ins; ++i) {
+        if (node->ins[i]) {
+            char input_name[512];
+            graphviz_node(visited, node->ins[i], input_name, sizeof(input_name));
+            printf("  %s -> %s:i%d;\n", input_name, out, i);
+        }
+    }
+}
+
+void sb_graphviz(SB_Proc* proc) {
+    printf("digraph G {\n");
+
+    NodeSet visited = node_set_new();
+    char temp[512];
+    graphviz_node(&visited, proc->end, temp, sizeof(temp));
+
+    node_set_destroy(&visited);
+        
+    printf("}\n\n");
 }

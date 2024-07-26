@@ -62,3 +62,38 @@ void* arena_zero(Arena* arena, size_t amount) {
     memset(result, 0, amount);
     return result;
 }
+
+Scratch* scratch_get(ScratchLibrary* lib, int num_conflicts, Arena** conflicts) {
+    for (int i = 0; i < ARRAY_LENGTH(lib->arenas); ++i) {
+        Arena* arena = lib->arenas[i];
+
+        bool does_conflict = false;
+
+        for (int j = 0; j < num_conflicts; ++j) {
+            if (conflicts[j] == arena) {
+                does_conflict = true;
+                break;
+            }
+        }
+
+        if (!does_conflict) {
+            size_t save = arena->used;
+            Scratch* scratch = arena_type(arena, Scratch);
+            scratch->arena = arena;
+            scratch->save = save;
+            return scratch;
+        }
+    }
+
+    assert("No non-conflicting scratch buffers available" && false);
+    return 0;
+}
+
+void scratch_release(Scratch* scratch) {
+    Arena* arena = scratch->arena;
+    size_t cur = scratch->arena->used;
+    arena->used = scratch->save;
+    #if _DEBUG
+    memset((uint8_t*)arena->base + arena->used, 0, cur-arena->used);
+    #endif
+}

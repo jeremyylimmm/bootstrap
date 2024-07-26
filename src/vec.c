@@ -2,32 +2,65 @@
 
 #include "containers.h"
 
-Vec vec_new(size_t stride) {
-    return (Vec) {
-        .stride = stride,
-    };
+#define INITIAL_CAPACITY 8
+
+typedef struct {
+    size_t capacity;
+    size_t length;
+} Header;
+
+static Header* get_hdr(void* vec) {
+    return (Header*)vec - 1;
 }
 
-void vec_destroy(Vec* vec) {
-    free(vec->memory);
-    memset(vec, 0, sizeof(*vec));
+void vec_destroy(void* vec) {
+    if (vec) {
+        free(get_hdr(vec));
+    }
 }
 
-void* vec_push(Vec* vec, void* data) {
-    if (vec->length == vec->capacity) {
-        vec->capacity = vec->capacity ? vec->capacity * 2 : 8;
-        vec->memory = realloc(vec->memory, vec->capacity * vec->stride);
+static size_t get_allocation_size(size_t stride, size_t capacity) {
+    return sizeof(Header) + stride * capacity;
+}
+
+void* vec_push_slot(void* vec, size_t stride) {
+    Header* hdr;
+
+    if (vec) {
+        hdr = get_hdr(vec);
+    }
+    else {
+        hdr = malloc(get_allocation_size(stride, INITIAL_CAPACITY));
+        hdr->capacity = INITIAL_CAPACITY;
+        hdr->length = 0;
     }
 
-    size_t index = vec->length++;
-    void* dest = (uint8_t*)vec->memory + index * vec->stride;
-    memcpy(dest, data, vec->stride);
+    if (hdr->length == hdr->capacity) {
+        hdr->capacity *= 2;
+        hdr = realloc(hdr, get_allocation_size(stride, hdr->capacity));
+    }
 
-    return dest;
+    hdr->length++;
+
+    return hdr + 1;
 }
 
-void* vec_pop(Vec* vec) {
-    assert(vec->length);
-    size_t index = --vec->length;
-    return (uint8_t*)vec->memory + index * vec->stride;
+size_t vec_pop_index(void* vec) {
+    assert(vec_len(vec));
+    return --get_hdr(vec)->length;
+}
+
+size_t vec_len(void* vec) {
+    if (vec) {
+        return get_hdr(vec)->length;
+    }
+    else {
+        return 0;
+    }
+}
+
+void vec_clear(void* vec) {
+    if (vec) {
+        get_hdr(vec)->length = 0;
+    }
 }

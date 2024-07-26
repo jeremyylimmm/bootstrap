@@ -1,3 +1,4 @@
+X(NULL, "null")
 X(INT_CONST, "int_const")
 
 X(ADD, "add")
@@ -13,3 +14,10 @@ X(START_CTRL, "start.ctrl")
 
 X(REGION, "region")
 X(PHI, "phi")
+
+X(BRANCH, "branch")
+X(BRANCH_THEN, "branch.then")
+X(BRANCH_ELSE, "branch.else")
+
+X(LOAD, "load")
+X(STORE, "store")
