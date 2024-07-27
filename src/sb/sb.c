@@ -60,6 +60,10 @@ SB_Node* sb_node_int_const(SB_Context* ctx, uint64_t value) {
     return n;
 }
 
+SB_Node* sb_node_alloca(SB_Context* ctx) {
+    return new_node(ctx, SB_OP_ALLOCA, 0, SB_NODE_FLAG_NONE);
+}
+
 SB_Node* new_binary(SB_Context* ctx, SB_Op op, SB_Node* left, SB_Node* right) {
     SB_Node* n = new_node(ctx, op, NUM_BINARY_INS, SB_NODE_FLAG_NONE);
     SET_INPUT(n, BINARY_LEFT, left);
@@ -186,7 +190,6 @@ static void trim_useless(SB_Node* node, void* _ctx) {
             u = &(*u)->next;
         }
         else {
-            printf("Trimmin'\n");
             *u = (*u)->next;
         }
     }

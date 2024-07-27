@@ -1,6 +1,8 @@
 X(NULL, "null")
 X(INT_CONST, "int_const")
 
+X(ALLOCA, "alloca")
+
 X(ADD, "add")
 X(SUB, "sub")
 X(MUL, "mul")

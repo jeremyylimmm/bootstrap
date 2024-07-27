@@ -4,6 +4,7 @@
 #include <assert.h>
 #include <stdbool.h>
 #include <memory.h>
+#include <string.h>
 
 #define ARRAY_LENGTH(arr) (sizeof(arr)/sizeof((arr)[0]))
 
@@ -85,4 +86,30 @@ inline void bitset_set(Bitset* set, size_t index) {
 inline void bitset_unset(Bitset* set, size_t index) {
     assert(index < set->num_bits);
     set->words[index/64] &= ~((uint64_t)1 << (index % 64));
+}
+
+typedef struct {
+    char* str;
+    size_t length;
+} String;
+
+inline String view_cstr(char* str) {
+    return (String) {
+        .length = strlen(str),
+        .str = str
+    };
+}
+
+inline String clone_cstr(Arena* arena, char* str) {
+    size_t len = strlen(str);
+
+    char* buf = arena_push(arena, len + 1);
+
+    memcpy(buf, str, len);
+    buf[len] = '\0';
+
+    return (String) {
+        .str = str,
+        .length = len
+    };
 }

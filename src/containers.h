@@ -24,6 +24,17 @@ inline bool pointer_cmp(void* a, void* b) {
     return (*(void**)a) == (*(void**)b);
 }
 
+inline uint64_t string_hash(void* ptr) {
+    String str = *(String*)ptr;
+    return fnv1a(str.str, str.length);
+}
+
+inline bool string_cmp(void* a, void* b) {
+    String str_a = *(String*)a;
+    String str_b = *(String*)b;
+    return str_a.length == str_b.length && memcmp(str_a.str, str_b.str, str_a.length) == 0;
+}
+
 typedef struct {
     size_t key_size;
     ContainerHashFn hash_fn;

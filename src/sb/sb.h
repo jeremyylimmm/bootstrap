@@ -59,6 +59,8 @@ void sb_cleanup(SB_Context* ctx);
 SB_Node* sb_node_null(SB_Context* ctx);
 SB_Node* sb_node_int_const(SB_Context* ctx, uint64_t value);
 
+SB_Node* sb_node_alloca(SB_Context* ctx);
+
 SB_Node* sb_node_add (SB_Context* ctx, SB_Node* left, SB_Node* right);
 SB_Node* sb_node_sub (SB_Context* ctx, SB_Node* left, SB_Node* right);
 SB_Node* sb_node_mul (SB_Context* ctx, SB_Node* left, SB_Node* right);

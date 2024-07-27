@@ -64,7 +64,7 @@ void hir_print(HIR_Proc* proc, char* name) {
         foreach_node(n, block) {
             printf("  %%%-3d = ", n->tid);
 
-            static_assert(NUM_HIR_OPS == 9, "handle print ops");
+            static_assert(NUM_HIR_OPS == 12, "handle print ops");
             switch (n->op) {
                 default:
                     assert(false);
@@ -84,17 +84,27 @@ void hir_print(HIR_Proc* proc, char* name) {
                 case HIR_OP_DIV:                            
                     printf("div %%%d, %%%d", n->as.binary[0]->tid, n->as.binary[1]->tid);
                     break;
+                case HIR_OP_ASSIGN:
+                    printf("assign [%%%d], %%%d", n->as.assign.addr->tid, n->as.assign.value->tid);
+                    break;
+                case HIR_OP_LOAD:
+                    printf("load %%%d", n->as.load.addr->tid);
+                    break;
                 case HIR_OP_JUMP:
                     printf("jmp bb_%d", n->as.jump.loc->tid);
                     break;
                 case HIR_OP_BRANCH:
-                    printf("branch %%%d [bb_%d, bb_%d]", n->as.branch.predicate->tid, n->as.branch.loc_then->tid, n->as.branch.loc_else->tid);
+                    printf("branch %%%d <bb_%d, bb_%d>", n->as.branch.predicate->tid, n->as.branch.loc_then->tid, n->as.branch.loc_else->tid);
                     break;
                 case HIR_OP_RET:
                     printf("ret");
                     if (n->as.ret.value) {
                         printf(" %%%d", n->as.ret.value->tid);
                     }
+                    break;
+                case HIR_OP_LOCAL:
+                    printf("local");
+                    break;
             }
 
             printf("\n");
@@ -171,7 +181,7 @@ typedef struct {
 } State;
 
 static SB_Node* lower_node(SB_Context* ctx, SB_Node** conv, State* state, SB_Node** ctrl_out, HIR_Node* n) {
-    static_assert(NUM_HIR_OPS == 9, "handle hir instruction lowering");
+    static_assert(NUM_HIR_OPS == 12, "handle hir instruction lowering");
     switch (n->op) {
         default:
             assert(false);
@@ -186,6 +196,10 @@ static SB_Node* lower_node(SB_Context* ctx, SB_Node** conv, State* state, SB_Nod
             return sb_node_mul(ctx, conv[n->as.binary[0]->tid], conv[n->as.binary[1]->tid]);
         case HIR_OP_DIV:
             return sb_node_sdiv(ctx, conv[n->as.binary[0]->tid], conv[n->as.binary[1]->tid]);
+        case HIR_OP_ASSIGN:
+            return state->mem = sb_node_store(ctx, state->ctrl, state->mem, conv[n->as.assign.addr->tid], conv[n->as.assign.value->tid]);
+        case HIR_OP_LOAD:
+            return sb_node_load(ctx, state->ctrl, state->mem, conv[n->as.load.addr->tid]);
         case HIR_OP_JUMP:
             return 0;
         case HIR_OP_BRANCH: {
@@ -199,6 +213,8 @@ static SB_Node* lower_node(SB_Context* ctx, SB_Node** conv, State* state, SB_Nod
                 state->ret_val = conv[n->as.ret.value->tid];
             }
             return 0;
+        case HIR_OP_LOCAL:
+            return sb_node_alloca(ctx);
     }
 }
 

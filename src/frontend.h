@@ -14,10 +14,15 @@ typedef enum {
     HIR_OP_MUL,
     HIR_OP_DIV,
 
+    HIR_OP_ASSIGN,
+    HIR_OP_LOAD,
+
     HIR_OP_JUMP,
     HIR_OP_BRANCH,
 
     HIR_OP_RET,
+
+    HIR_OP_LOCAL,
 
     NUM_HIR_OPS,
 } HIR_Op;
@@ -30,6 +35,7 @@ enum {
     TOKEN_KW_ELSE,
     TOKEN_KW_WHILE,
     TOKEN_KW_RETURN,
+    TOKEN_KW_LET,
 };
 
 typedef struct {
@@ -48,6 +54,8 @@ struct HIR_Node {
     HIR_Node* next;
 
     HIR_Op op;
+    Token token;
+    
     union {
         int128_t int_const;
         HIR_Node* binary[2];
@@ -60,6 +68,16 @@ struct HIR_Node {
         struct {
             HIR_Node* value;
         } ret;
+        struct {
+            HIR_Node* addr;
+        } load;
+        struct {
+            HIR_Node* addr;
+            HIR_Node* value;
+        } assign;
+        struct {
+            int _dummy;
+        } local;
     } as;
 
     int tid;
