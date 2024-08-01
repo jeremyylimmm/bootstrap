@@ -39,6 +39,7 @@ int main() {
     sb_opt(sbc, ll_proc);
 
     sb_graphviz(ll_proc);
+    sb_generate_win64(sbc, ll_proc);
 
     return 0;
 }

@@ -21,7 +21,9 @@ static const char* sb_op_mnemonic[] = {
 
 typedef enum {
     SB_NODE_FLAG_NONE = 0,
-    SB_NODE_FLAG_PROJECTION = SB_BIT(0)
+    SB_NODE_FLAG_PROJECTION = SB_BIT(0),
+    SB_NODE_FLAG_STARTS_BASIC_BLOCK = SB_BIT(1),
+    SB_NODE_FLAG_TRANSFERS_CONTROL = SB_BIT(2)
 } SB_NodeFlags;
 
 typedef struct SB_Node SB_Node;
@@ -50,6 +52,31 @@ typedef struct {
     SB_Node* start;
     SB_Node* end;
 } SB_Proc;
+
+typedef struct SB_Instr SB_Instr;
+typedef struct SB_Block SB_Block;
+
+struct SB_Instr {
+    SB_Instr* block;
+    SB_Instr* prev;
+    SB_Instr* next;
+
+    SB_Node* node;
+};
+
+struct SB_Block {
+    SB_Block* next;
+
+    SB_Instr* start;
+    SB_Instr* end;
+
+    int num_successors;
+    SB_Block* successors[2];
+};
+
+typedef struct {
+    SB_Block* control_flow_head;
+} SB_Schedule;
 
 typedef struct SB_Context SB_Context;
 
@@ -90,3 +117,5 @@ SB_Proc* sb_proc(SB_Context* ctx, SB_Node* start, SB_Node* end);
 void sb_opt(SB_Context* ctx, SB_Proc* proc); 
 
 void sb_graphviz(SB_Proc* proc);
+
+void sb_generate_win64(SB_Context* ctx, SB_Proc* proc);

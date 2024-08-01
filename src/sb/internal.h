@@ -6,6 +6,7 @@
 
 struct SB_Context {
     Arena* arena;
+    ScratchLibrary scratch_lib;
 };
 
 enum {
@@ -107,3 +108,5 @@ static void walk_graph(SB_Node* end, NodeSet* visited_out, VisitNodeFn visit_fn,
 
     vec_destroy(stack);
 }
+
+SB_Schedule* schedule(Arena* arena, SB_Proc* proc);

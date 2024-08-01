@@ -8,10 +8,12 @@ SB_Context* sb_init() {
     Arena* arena = arena_new();
     SB_Context* ctx = arena_type(arena, SB_Context);
     ctx->arena = arena;
+    ctx->scratch_lib = scratch_library_new();
     return ctx;
 }
 
 void sb_cleanup(SB_Context* ctx) {
+    scratch_library_destroy(&ctx->scratch_lib);
     arena_destroy(ctx->arena);
 }
 
@@ -88,7 +90,7 @@ SB_Node* sb_node_sdiv(SB_Context* ctx, SB_Node* left, SB_Node* right) {
 }
 
 SB_Node* sb_node_start(SB_Context* ctx) {
-    return new_node(ctx, SB_OP_START, 0, SB_NODE_FLAG_NONE);
+    return new_node(ctx, SB_OP_START, 0, SB_NODE_FLAG_STARTS_BASIC_BLOCK | SB_NODE_FLAG_TRANSFERS_CONTROL);
 }
 
 SB_Node* sb_node_end(SB_Context* ctx, SB_Node* ctrl, SB_Node* mem, SB_Node* ret_val) {
@@ -99,24 +101,24 @@ SB_Node* sb_node_end(SB_Context* ctx, SB_Node* ctrl, SB_Node* mem, SB_Node* ret_
     return node;
 }
 
-static SB_Node* new_proj(SB_Context* ctx, SB_Op op, SB_Node* input) {
-    SB_Node* node = new_node(ctx, op, NUM_PROJ_INS, SB_NODE_FLAG_PROJECTION);
+static SB_Node* new_proj(SB_Context* ctx, SB_Op op, SB_Node* input, SB_NodeFlags flags) {
+    SB_Node* node = new_node(ctx, op, NUM_PROJ_INS, SB_NODE_FLAG_PROJECTION | flags);
     SET_INPUT(node, PROJ_INPUT, input);
     return node;
 }
 
 SB_Node* sb_node_start_mem(SB_Context* ctx, SB_Node* start) {
     assert(start->op == SB_OP_START);
-    return new_proj(ctx, SB_OP_START_MEM, start);
+    return new_proj(ctx, SB_OP_START_MEM, start, SB_NODE_FLAG_NONE);
 }
 
 SB_Node* sb_node_start_ctrl(SB_Context* ctx, SB_Node* start) {
     assert(start->op == SB_OP_START);
-    return new_proj(ctx, SB_OP_START_CTRL, start);
+    return new_proj(ctx, SB_OP_START_CTRL, start, SB_NODE_FLAG_TRANSFERS_CONTROL);
 }
 
 SB_Node* sb_node_region(SB_Context* ctx) {
-    return new_node(ctx, SB_OP_REGION, 0, SB_NODE_FLAG_NONE);
+    return new_node(ctx, SB_OP_REGION, 0, SB_NODE_FLAG_STARTS_BASIC_BLOCK | SB_NODE_FLAG_TRANSFERS_CONTROL);
 }
 
 SB_Node* sb_node_phi(SB_Context* ctx) {
@@ -145,7 +147,7 @@ void sb_provide_phi_inputs(SB_Context* ctx, SB_Node* phi, SB_Node* region, int n
 }
 
 SB_Node* sb_node_branch(SB_Context* ctx, SB_Node* ctrl, SB_Node* predicate) {
-    SB_Node* node = new_node(ctx, SB_OP_BRANCH, NUM_BRANCH_INS, SB_NODE_FLAG_NONE);
+    SB_Node* node = new_node(ctx, SB_OP_BRANCH, NUM_BRANCH_INS, SB_NODE_FLAG_TRANSFERS_CONTROL);
     SET_INPUT(node, BRANCH_CTRL, ctrl);
     SET_INPUT(node, BRANCH_PREDICATE, predicate);
     return node;
@@ -153,12 +155,12 @@ SB_Node* sb_node_branch(SB_Context* ctx, SB_Node* ctrl, SB_Node* predicate) {
 
 SB_Node* sb_node_branch_then(SB_Context* ctx, SB_Node* branch) {
     assert(branch->op == SB_OP_BRANCH);
-    return new_proj(ctx, SB_OP_BRANCH_THEN, branch);
+    return new_proj(ctx, SB_OP_BRANCH_THEN, branch, SB_NODE_FLAG_STARTS_BASIC_BLOCK | SB_NODE_FLAG_TRANSFERS_CONTROL);
 }
 
 SB_Node* sb_node_branch_else(SB_Context* ctx, SB_Node* branch) {
     assert(branch->op == SB_OP_BRANCH);
-    return new_proj(ctx, SB_OP_BRANCH_ELSE, branch);
+    return new_proj(ctx, SB_OP_BRANCH_ELSE, branch, SB_NODE_FLAG_STARTS_BASIC_BLOCK | SB_NODE_FLAG_TRANSFERS_CONTROL);
 }
 
 SB_Node* sb_node_load(SB_Context* ctx, SB_Node* ctrl, SB_Node* mem, SB_Node* addr) {
